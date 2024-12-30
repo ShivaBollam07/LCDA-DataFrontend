@@ -8,23 +8,40 @@ const App = () => {
   const [category, setCategory] = useState('');
   const [previewImage, setPreviewImage] = useState(null);
   const [categories] = useState([
-    'good tomato leaf',
-    'diseased tomato leaf',
-    'good chilli leaf',
-    'diseased chilli leaf',
-    'good groundnut leaf',
-    'diseased groundnut leaf',
+    // List of categories
+    'Chilli - Healthy',
+    'Chilli - Leaf Curl Virus',
+    'Pepper Bell - Bacterial Spot',
+    'Pepper Bell - Healthy',
+    'Potato - Early Blight',
+    'Potato - Healthy',
+    'Potato - Late Blight',
+    'Tomato - Bacterial Spot',
+    'Tomato - Early Blight',
+    'Tomato - Healthy',
+    'Tomato - Late Blight',
+    'Tomato - Leaf Mold',
+    'Tomato - Mosaic Virus',
+    'Tomato - Septoria Leaf Spot',
+    'Tomato - Target Spot',
+    'Tomato - Two Spotted Spider Mite',
+    'Tomato - Yellow Leaf Curl Virus'
   ]);
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
   const [cameraActive, setCameraActive] = useState(false);
-  const [facingMode, setFacingMode] = useState('environment'); // 'environment' is back camera, 'user' is front camera
+  const [facingMode, setFacingMode] = useState('environment');
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 4,
+    totalPages: 1,
+  });
 
-  const fetchImages = useCallback(async () => {
+  const fetchImages = useCallback(async (page = 1) => {
     setIsLoading(true);
     try {
-      const response = await fetch('https://lcvd-datacollectorbackend.onrender.com/uploads', {
+      const response = await fetch(`http://localhost:5002/uploads/paginated?page=${page}&limit=${pagination.limit}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -33,7 +50,7 @@ const App = () => {
 
       const data = await response.json();
 
-      const formattedData = data
+      const formattedData = data.data
         .map((image) => {
           try {
             return {
@@ -41,8 +58,7 @@ const App = () => {
               content: image.content && image.contentType
                 ? `data:${image.contentType};base64,${btoa(
                   String.fromCharCode(...new Uint8Array(image.content.data))
-                )}`
-                : null,
+                )}` : null,
             };
           } catch (transformError) {
             console.error('Image transform error:', transformError);
@@ -52,6 +68,12 @@ const App = () => {
         .filter((image) => image !== null);
 
       setImages(formattedData);
+      setPagination({
+        ...pagination,
+        page: data.page,
+        totalPages: data.totalPages,
+      });
+
       setMessage('');
     } catch (err) {
       console.error('Fetch images error:', err);
@@ -60,11 +82,11 @@ const App = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [pagination.limit]);
 
   useEffect(() => {
-    fetchImages();
-  }, [fetchImages]);
+    fetchImages(pagination.page);
+  }, [pagination.page, fetchImages]);
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -80,7 +102,6 @@ const App = () => {
 
   const activateCamera = async () => {
     try {
-      // Stop any existing stream
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
       }
@@ -101,11 +122,9 @@ const App = () => {
   };
 
   const switchCamera = async () => {
-    // Toggle between front and back cameras
     const newFacingMode = facingMode === 'environment' ? 'user' : 'environment';
     setFacingMode(newFacingMode);
     
-    // Reactivate camera with new facing mode
     if (cameraActive) {
       await activateCamera();
     }
@@ -154,7 +173,7 @@ const App = () => {
     formData.append('category', category);
 
     try {
-      const response = await fetch('https://lcvd-datacollectorbackend.onrender.com/upload', {
+      const response = await fetch('http://localhost:5002/upload', {
         method: 'POST',
         body: formData,
       });
@@ -166,7 +185,7 @@ const App = () => {
         setFile(null);
         setPreviewImage(null);
         setCategory('');
-        await fetchImages();
+        fetchImages(pagination.page); // Refresh images
       } else {
         setMessage(result.error || 'Failed to upload image');
       }
@@ -178,6 +197,16 @@ const App = () => {
     }
   };
 
+  const handlePageChange = (direction) => {
+    setPagination((prev) => {
+      const newPage = direction === 'next'
+        ? Math.min(prev.page + 1, prev.totalPages)
+        : Math.max(prev.page - 1, 1);
+      fetchImages(newPage);
+      return { ...prev, page: newPage };
+    });
+  };
+
   return (
     <div className="App">
       <h1>Plant Leaf Image Upload</h1>
@@ -186,32 +215,22 @@ const App = () => {
         <div className="input-buttons">
           <label className="file-input-label" style={{ width: '100px', maxWidth: '100px' }}>
             <i className="fas fa-file-upload" style={{ marginRight: '8px' }}></i>
-            <span>Choose File</span>
+            <span> File</span>
             <input type="file" className="file-input" accept="image/jpeg,image/png" onChange={handleFileChange} />
           </label>
           <button
             type="button"
             className="camera-button"
-            style={{
-              marginTop: '10px',
-              marginBottom: '10px',
-              marginLeft: '5px',
-              backgroundColor: '#f59e0b',
-              color: 'white',
-              padding: '12px 24px',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontWeight: '500',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'background-color 0.3s ease',
-            }}
             onClick={activateCamera}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#d97706'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f59e0b'}
+            style={{
+              backgroundColor: '#007bff',
+              color: '#fff',
+              padding: '10px 20px',
+              borderRadius: '5px',
+              cursor: 'pointer',
+            }}
           >
-            <i className="fas fa-camera" style={{ marginRight: '8px', fontSize: '16px' }}></i>
+            <i className="fas fa-camera" style={{ marginRight: '8px' }}></i>
             <span>Use Camera</span>
           </button>
         </div>
@@ -228,62 +247,41 @@ const App = () => {
             <div className="camera-controls">
               <button
                 type="button"
-                style={{
-                  backgroundColor: "#007bff",
-                  color: "#fff",
-                  border: "none",
-                  padding: "10px 20px",
-                  fontSize: "16px",
-                  borderRadius: "5px",
-                  cursor: "pointer",
-                  margin: "5px",
-                  transition: "background-color 0.3s ease",
-                }}
                 onClick={capturePhoto}
-                onMouseEnter={(e) => (e.target.style.backgroundColor = "#0056b3")}
-                onMouseLeave={(e) => (e.target.style.backgroundColor = "#007bff")}
+                style={{
+                  backgroundColor: '#28a745',
+                  color: '#fff',
+                  padding: '10px 20px',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                }}
               >
-                <i className="fas fa-camera" style={{ marginRight: '8px' }}></i>
                 Capture Photo
               </button>
               <button
                 type="button"
-                style={{
-                  backgroundColor: "#6c757d",
-                  color: "#fff",
-                  border: "none",
-                  padding: "10px 20px",
-                  fontSize: "16px",
-                  borderRadius: "5px",
-                  cursor: "pointer",
-                  margin: "5px",
-                  transition: "background-color 0.3s ease",
-                }}
                 onClick={switchCamera}
-                onMouseEnter={(e) => (e.target.style.backgroundColor = "#5a6268")}
-                onMouseLeave={(e) => (e.target.style.backgroundColor = "#6c757d")}
+                style={{
+                  backgroundColor: '#ffc107',
+                  color: '#fff',
+                  padding: '10px 20px',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                }}
               >
-                <i className="fas fa-sync" style={{ marginRight: '8px' }}></i>
                 Switch Camera
               </button>
               <button
                 type="button"
-                style={{
-                  backgroundColor: "#dc3545",
-                  color: "#fff",
-                  border: "none",
-                  padding: "10px 20px",
-                  fontSize: "16px",
-                  borderRadius: "5px",
-                  cursor: "pointer",
-                  margin: "5px",
-                  transition: "background-color 0.3s ease",
-                }}
                 onClick={deactivateCamera}
-                onMouseEnter={(e) => (e.target.style.backgroundColor = "#a71d2a")}
-                onMouseLeave={(e) => (e.target.style.backgroundColor = "#dc3545")}
+                style={{
+                  backgroundColor: '#dc3545',
+                  color: '#fff',
+                  padding: '10px 20px',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                }}
               >
-                <i className="fas fa-times" style={{ marginRight: '8px' }}></i>
                 Close Camera
               </button>
             </div>
@@ -309,9 +307,14 @@ const App = () => {
 
         <button
           type="submit"
-          className="upload-button"
           disabled={!file || !category || isLoading}
-          style={{ width: '100%', marginTop: '10px' }}
+          style={{
+            backgroundColor: '#007bff',
+            color: '#fff',
+            padding: '10px 20px',
+            borderRadius: '5px',
+            cursor: 'pointer',
+          }}
         >
           Upload Image
         </button>
@@ -336,6 +339,40 @@ const App = () => {
             </div>
           ))
         )}
+      </div>
+
+      <div className="pagination-controls">
+        <button
+          onClick={() => handlePageChange('prev')}
+          disabled={pagination.page <= 1}
+          style={{
+            backgroundColor: '#007bff',
+            color: '#fff',
+            padding: '10px 20px',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            marginRight: '10px',
+          }}
+        >
+          Previous
+        </button>
+        <span>
+          Page {pagination.page} of {pagination.totalPages}
+        </span>
+        <button
+          onClick={() => handlePageChange('next')}
+          disabled={pagination.page >= pagination.totalPages}
+          style={{
+            backgroundColor: '#007bff',
+            color: '#fff',
+            padding: '10px 20px',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            marginLeft: '10px',
+          }}
+        >
+          Next
+        </button>
       </div>
     </div>
   );
