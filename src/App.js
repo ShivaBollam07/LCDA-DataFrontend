@@ -41,7 +41,7 @@ const App = () => {
   const fetchImages = useCallback(async (page = 1) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`http://localhost:5002/uploads/paginated?page=${page}&limit=${pagination.limit}`, {
+      const response = await fetch(`https://lcda-databackend.onrender.com/uploads/paginated?page=${page}&limit=${pagination.limit}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -173,7 +173,7 @@ const App = () => {
     formData.append('category', category);
 
     try {
-      const response = await fetch('http://localhost:5002/upload', {
+      const response = await fetch('https://lcda-databackend.onrender.com/upload', {
         method: 'POST',
         body: formData,
       });
