@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import ReactCrop from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css';
 import './App.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
@@ -9,9 +7,6 @@ const App = () => {
   const [file, setFile] = useState(null);
   const [category, setCategory] = useState('');
   const [previewImage, setPreviewImage] = useState(null);
-  const [crop, setCrop] = useState();
-  const [completedCrop, setCompletedCrop] = useState(null);
-  const [isCropping, setIsCropping] = useState(false);
   const [categories] = useState([
     'good tomato leaf',
     'diseased tomato leaf',
@@ -24,6 +19,7 @@ const App = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
   const [cameraActive, setCameraActive] = useState(false);
+  const [facingMode, setFacingMode] = useState('environment'); // 'environment' is back camera, 'user' is front camera
 
   const fetchImages = useCallback(async () => {
     setIsLoading(true);
@@ -77,87 +73,70 @@ const App = () => {
       const reader = new FileReader();
       reader.onloadend = () => {
         setPreviewImage(reader.result);
-        setIsCropping(true);
-        setCrop(undefined); // Reset crop when new file is selected
       };
       reader.readAsDataURL(selectedFile);
     }
   };
 
-  const getCroppedImage = async (sourceImage, crop) => {
-    const image = await createImage(sourceImage);
-    const canvas = document.createElement('canvas');
-    const pixelRatio = window.devicePixelRatio;
-    const scaleX = image.naturalWidth / image.width;
-    const scaleY = image.naturalHeight / image.height;
-
-    canvas.width = crop.width * pixelRatio * scaleX;
-    canvas.height = crop.height * pixelRatio * scaleY;
-
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    ctx.imageSmoothingQuality = 'high';
-
-    ctx.drawImage(
-      image,
-      crop.x * scaleX,
-      crop.y * scaleY,
-      crop.width * scaleX,
-      crop.height * scaleY,
-      0,
-      0,
-      crop.width * scaleX,
-      crop.height * scaleY
-    );
-
-    return new Promise((resolve) => {
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            console.error('Canvas is empty');
-            return;
-          }
-          blob.name = 'cropped.jpeg';
-          resolve(blob);
-        },
-        'image/jpeg',
-        1
-      );
-    });
-  };
-
-  const createImage = (url) =>
-    new Promise((resolve, reject) => {
-      const image = new Image();
-      image.addEventListener('load', () => resolve(image));
-      image.addEventListener('error', (error) => reject(error));
-      image.src = url;
-    });
-  const handleCropComplete = (crop) => {
-    setCompletedCrop(crop);
-  };
-
-  const handleCropCancel = () => {
-    setIsCropping(false);
-    setCrop(undefined);
-    setCompletedCrop(null);
-  };
-
-  const handleCropSave = async () => {
-    if (!completedCrop || !previewImage) return;
-
+  const activateCamera = async () => {
     try {
-      const croppedBlob = await getCroppedImage(previewImage, completedCrop);
-      const croppedFile = new File([croppedBlob], 'cropped.jpeg', { type: 'image/jpeg' });
-      setFile(croppedFile);
-      setPreviewImage(URL.createObjectURL(croppedBlob));
-      setIsCropping(false);
-      setCrop(undefined);
-      setCompletedCrop(null);
-    } catch (e) {
-      console.error('Error cropping image:', e);
-      setMessage('Failed to crop image');
+      // Stop any existing stream
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+
+      const constraints = {
+        video: {
+          facingMode: facingMode
+        }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      setCameraStream(stream);
+      setCameraActive(true);
+    } catch (err) {
+      console.error('Camera activation error:', err);
+      setMessage('Failed to access camera');
     }
+  };
+
+  const switchCamera = async () => {
+    // Toggle between front and back cameras
+    const newFacingMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(newFacingMode);
+    
+    // Reactivate camera with new facing mode
+    if (cameraActive) {
+      await activateCamera();
+    }
+  };
+
+  const capturePhoto = () => {
+    if (!cameraStream) return;
+
+    const video = document.querySelector('#camera-video');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        setFile(file);
+        setPreviewImage(URL.createObjectURL(file));
+        deactivateCamera();
+      }
+    }, 'image/jpeg');
+  };
+
+  const deactivateCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+    setCameraActive(false);
   };
 
   const handleUpload = async (e) => {
@@ -197,46 +176,6 @@ const App = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const activateCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      setCameraStream(stream);
-      setCameraActive(true);
-    } catch (err) {
-      console.error('Camera activation error:', err);
-    }
-  };
-
-  const capturePhoto = () => {
-    if (!cameraStream) return;
-
-    const video = document.querySelector('#camera-video');
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
-        setFile(file);
-        setPreviewImage(URL.createObjectURL(file));
-        setIsCropping(true);
-        setCrop(undefined);
-        deactivateCamera();
-      }
-    }, 'image/jpeg');
-  };
-
-  const deactivateCamera = () => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-      setCameraStream(null);
-    }
-    setCameraActive(false);
   };
 
   return (
@@ -286,84 +225,46 @@ const App = () => {
               muted
               ref={(video) => video && cameraStream && (video.srcObject = cameraStream)}
             />
-            <button
-              type="button"
-              style={{
-                backgroundColor: "#007bff",
-                color: "#fff",
-                border: "none",
-                padding: "10px 20px",
-                fontSize: "16px",
-                borderRadius: "5px",
-                cursor: "pointer",
-                margin: "5px",
-                transition: "background-color 0.3s ease",
-              }}
-              onClick={capturePhoto}
-              onMouseEnter={(e) => (e.target.style.backgroundColor = "#0056b3")}
-              onMouseLeave={(e) => (e.target.style.backgroundColor = "#007bff")}
-            >
-              Capture Photo
-            </button>
-            <button
-              type="button"
-              style={{
-                backgroundColor: "#dc3545",
-                color: "#fff",
-                border: "none",
-                padding: "10px 20px",
-                fontSize: "16px",
-                borderRadius: "5px",
-                cursor: "pointer",
-                margin: "5px",
-                transition: "background-color 0.3s ease",
-              }}
-              onClick={deactivateCamera}
-              onMouseEnter={(e) => (e.target.style.backgroundColor = "#a71d2a")}
-              onMouseLeave={(e) => (e.target.style.backgroundColor = "#dc3545")}
-            >
-              Close Camera
-            </button>
-          </div>
-        )}
-
-        {previewImage && isCropping ? (
-          <div className="crop-container">
-            <ReactCrop
-              crop={crop}
-              onChange={(_, percentCrop) => setCrop(percentCrop)}
-              onComplete={(c) => handleCropComplete(c)}
-              aspect={undefined}
-              minWidth={50}
-              minHeight={50}
-            >
-              <img
-                src={previewImage}
-                alt="Preview"
-                style={{ maxWidth: '100%' }}
-              />
-            </ReactCrop>
-            <div className="crop-buttons">
+            <div className="camera-controls">
               <button
                 type="button"
                 style={{
-                  backgroundColor: "#28a745",
+                  backgroundColor: "#007bff",
                   color: "#fff",
                   border: "none",
-                  padding: "12px 24px",
+                  padding: "10px 20px",
                   fontSize: "16px",
                   borderRadius: "5px",
                   cursor: "pointer",
                   margin: "5px",
                   transition: "background-color 0.3s ease",
-                  width: '100%',
-                  maxWidth: '200px'
                 }}
-                onClick={handleCropSave}
-                onMouseEnter={(e) => (e.target.style.backgroundColor = "#218838")}
-                onMouseLeave={(e) => (e.target.style.backgroundColor = "#28a745")}
+                onClick={capturePhoto}
+                onMouseEnter={(e) => (e.target.style.backgroundColor = "#0056b3")}
+                onMouseLeave={(e) => (e.target.style.backgroundColor = "#007bff")}
               >
-                Save Crop
+                <i className="fas fa-camera" style={{ marginRight: '8px' }}></i>
+                Capture Photo
+              </button>
+              <button
+                type="button"
+                style={{
+                  backgroundColor: "#6c757d",
+                  color: "#fff",
+                  border: "none",
+                  padding: "10px 20px",
+                  fontSize: "16px",
+                  borderRadius: "5px",
+                  cursor: "pointer",
+                  margin: "5px",
+                  transition: "background-color 0.3s ease",
+                }}
+                onClick={switchCamera}
+                onMouseEnter={(e) => (e.target.style.backgroundColor = "#5a6268")}
+                onMouseLeave={(e) => (e.target.style.backgroundColor = "#6c757d")}
+              >
+                <i className="fas fa-sync" style={{ marginRight: '8px' }}></i>
+                Switch Camera
               </button>
               <button
                 type="button"
@@ -371,24 +272,25 @@ const App = () => {
                   backgroundColor: "#dc3545",
                   color: "#fff",
                   border: "none",
-                  padding: "12px 24px",
+                  padding: "10px 20px",
                   fontSize: "16px",
                   borderRadius: "5px",
                   cursor: "pointer",
                   margin: "5px",
                   transition: "background-color 0.3s ease",
-                  width: '100%',
-                  maxWidth: '200px'
                 }}
-                onClick={handleCropCancel}
-                onMouseEnter={(e) => (e.target.style.backgroundColor = "#c82333")}
+                onClick={deactivateCamera}
+                onMouseEnter={(e) => (e.target.style.backgroundColor = "#a71d2a")}
                 onMouseLeave={(e) => (e.target.style.backgroundColor = "#dc3545")}
               >
-                Cancel Crop
+                <i className="fas fa-times" style={{ marginRight: '8px' }}></i>
+                Close Camera
               </button>
             </div>
           </div>
-        ) : previewImage && (
+        )}
+
+        {previewImage && (
           <div className="preview-container">
             <img src={previewImage} alt="Preview" className="preview-image" />
           </div>
@@ -408,7 +310,7 @@ const App = () => {
         <button
           type="submit"
           className="upload-button"
-          disabled={!file || !category || isLoading || isCropping}
+          disabled={!file || !category || isLoading}
           style={{ width: '100%', marginTop: '10px' }}
         >
           Upload Image
